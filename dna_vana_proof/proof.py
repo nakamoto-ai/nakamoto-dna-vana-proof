@@ -5,11 +5,13 @@ import gc
 import re
 import hashlib
 from typing import Dict, Any, List
+from types import SimpleNamespace
 
 import pandas as pd
 
 from dna_vana_proof.models.proof_response import ProofResponse
 from dna_vana_proof.verify import DbSNPHandler
+from dna_vana_proof.exception import raise_custom_exception
 
 
 class TwentyThreeWeFileScorer:
@@ -141,22 +143,53 @@ class TwentyThreeWeFileScorer:
         """
         self.sender_address = self.config["verify"].split("address=")[-1]
         url = f"{self.config['verify']}&profile_id={self.profile_id}"
-        response = requests.get(url=url)
-        resp = response.json()
-        profile_verified = resp.get("is_approved", False)
 
-        return profile_verified
+        status_code = 0
+        response = SimpleNamespace(text="")
+
+        try:
+            response = requests.get(url=url)
+            status_code = response.status_code
+            response.raise_for_status()
+            resp = response.json()
+            profile_verified = resp.get("is_approved", False)
+            return profile_verified
+        except requests.RequestException as e:
+            message = (
+                "We are experiencing issues with the profile verification API. "
+                "Please try again and contact administrators if issue persists."
+            )
+            raise_custom_exception(
+                error_type=f"Profile Verification API Error",
+                message=message,
+                status_code=status_code,
+                response=response.text,
+            )
 
     def verify_hash(self, genome_hash: str) -> bool:
         """
         Sends the hashed genome data for verification via a POST request.
         """
         url = f"{self.config['key']}&genome_hash={genome_hash}"
-        response = requests.get(url=url)
-        resp = response.json()
-        hash_unique = resp.get("is_unique", False)
 
-        return hash_unique
+        status_code = 0
+        response = SimpleNamespace(text="")
+
+        try:
+            response = requests.get(url=url)
+            status_code = response.status_code
+            response.raise_for_status()
+            resp = response.json()
+            hash_unique = resp.get("is_unique", False)
+            return hash_unique
+        except requests.RequestException as e:
+            message = (
+                "We are experiencing issues with the genome hash check API. "
+                "Please try again and contact administrators if issue persists."
+            )
+            raise_custom_exception(
+                error_type=f"Genome Hash API Error", message=message, status_code=status_code, response=response.text
+            )
 
     def hash_23andme_file(self, file_path: str) -> str:
         df = pd.read_csv(
@@ -389,6 +422,7 @@ class Proof:
             if save_successful:
                 logging.info("Hash Data Saved Successfully.")
             else:
-                raise Exception("Hash Data Saving Failed.")
+                message = "Hash Data Saving Failed. Please contact administrators for further assistance"
+                raise_custom_exception(error_type="Genome Hash Save Failed.", message=message)
 
         return self.proof_response
