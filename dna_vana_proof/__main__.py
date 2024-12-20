@@ -35,8 +35,8 @@ def run() -> None:
     ]
     if missing_env_vars:
         message = (
-            f"Missing environment variable(s): {', '.join(missing_vars.upper())}. "
-            f"Please contact administrators for further assistance."
+            f"Missing environment variable(s): {', '.join(missing_env_vars)}. "
+            f" Please contact administrators for further assistance."
         )
         raise_custom_exception(error_type="Missing Environment Variables", message=message)
 
@@ -44,7 +44,7 @@ def run() -> None:
     if not input_files_exist:
         message = (
             f"Genome file is missing or improperly uploaded."
-            f"Please try again or contact administrators for assistance."
+            f" Please try again or contact administrators for assistance."
         )
         raise_custom_exception(error_type="Missing Genome File", message=message)
 
@@ -81,7 +81,7 @@ def change_filename_if_zip():
 
 def get_filetype():
     input_file = [f for f in os.listdir(INPUT_DIR) if os.path.isfile(os.path.join(INPUT_DIR, f))][0]
-    extension = input_file.split(".")[-1]
+    extension = input_file.split(".")[-1].lower()
     return extension
 
 

@@ -157,13 +157,13 @@ class TwentyThreeWeFileScorer:
         except requests.RequestException as e:
             message = (
                 "We are experiencing issues with the profile verification API. "
-                "Please try again and contact administrators if issue persists."
+                " Please try again and contact administrators if issue persists."
             )
             raise_custom_exception(
                 error_type=f"Profile Verification API Error",
                 message=message,
                 status_code=status_code,
-                response=response.text,
+                response=response.text.replace("\n", ""),
             )
 
     def verify_hash(self, genome_hash: str) -> bool:
@@ -185,10 +185,13 @@ class TwentyThreeWeFileScorer:
         except requests.RequestException as e:
             message = (
                 "We are experiencing issues with the genome hash check API. "
-                "Please try again and contact administrators if issue persists."
+                " Please try again and contact administrators if issue persists."
             )
             raise_custom_exception(
-                error_type=f"Genome Hash API Error", message=message, status_code=status_code, response=response.text
+                error_type=f"Genome Hash API Error",
+                message=message,
+                status_code=status_code,
+                response=response.text.replace("\n", ""),
             )
 
     def hash_23andme_file(self, file_path: str) -> str:
@@ -280,11 +283,23 @@ class TwentyThreeWeFileScorer:
 
     def save_hash(self, proof_response: ProofResponse) -> bool:
         hash_data = self.generate_hash_save_data(proof_response)
-        response = requests.post(url=self.config["key"], data=hash_data)
-        resp = response.json()
-        success = resp.get("success", False)
 
-        return success
+        status_code = 0
+        response = SimpleNamespace(text="")
+
+        try:
+            response = requests.post(url=self.config["key"], data=hash_data)
+            status_code = response.status_code
+            response.raise_for_status()
+            logging.info("Hash Data Saved Successfully.")
+        except requests.RequestException as e:
+            message = "Hash Data Saving Failed. Please contact administrators for further assistance"
+            raise_custom_exception(
+                error_type="Genome Hash Save Failed.",
+                message=message,
+                status_code=status_code,
+                response=response.text.replace("\n", ""),
+            )
 
     def generate_hash_save_data(self, proof_response: ProofResponse) -> Dict[str, Any]:
         hash_save_data = {
@@ -417,12 +432,6 @@ class Proof:
         }
 
         if self.proof_response.valid:
-            save_successful = scorer.save_hash(self.proof_response)
-
-            if save_successful:
-                logging.info("Hash Data Saved Successfully.")
-            else:
-                message = "Hash Data Saving Failed. Please contact administrators for further assistance"
-                raise_custom_exception(error_type="Genome Hash Save Failed.", message=message)
+            scorer.save_hash(self.proof_response)
 
         return self.proof_response
