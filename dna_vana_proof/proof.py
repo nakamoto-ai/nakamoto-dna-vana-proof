@@ -370,6 +370,12 @@ class Proof:
         if total_score < score_threshold:
             self.reset_scores()
             total_score = 0
+        else:
+            self.proof_response.authenticity = 1
+            self.proof_response.uniqueness = 1
+            self.proof_response.ownership = 1
+            self.proof_response.quality = 1
+            total_score = 1
 
         self.proof_response.score = total_score
         self.proof_response.valid = total_score >= score_threshold
