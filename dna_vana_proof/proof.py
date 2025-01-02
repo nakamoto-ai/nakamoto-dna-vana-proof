@@ -356,7 +356,7 @@ class Proof:
             input_data = [f for f in i_file]
             scorer = TwentyThreeWeFileScorer(input_data=input_data, config=self.config)
 
-        score_threshold = 0.9
+        score_threshold = 0.8
 
         self.update_proof_response(scorer, twenty_three_file)
 
