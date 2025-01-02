@@ -8,6 +8,7 @@ from typing import Dict, Any, List
 
 import pandas as pd
 
+from dna_vana_proof.__main__ import generate_timestamp
 from dna_vana_proof.models.proof_response import ProofResponse
 from dna_vana_proof.verify import DbSNPHandler
 
@@ -314,8 +315,9 @@ class TwentyThreeWeFileScorer:
 
 
 class Proof:
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], log_data: Dict[str, Any]):
         self.config = config
+        self.log_data = log_data
         self.proof_response = ProofResponse(dlp_id=config["dlp_id"])
         self.proof_response.authenticity = 0
         self.proof_response.ownership = 0
@@ -324,20 +326,31 @@ class Proof:
 
     def update_proof_response(self, scorer: TwentyThreeWeFileScorer, twenty_three_file: str):
         self.proof_response.authenticity = scorer.proof_of_authenticity()
+        self.log_data["info"]["scores"]["authenticity"] = self.proof_response.authenticity
         if self.proof_response.authenticity <= 0:
+            self.log_data["info"]["reason"] = "authenticity"
             return
 
         self.proof_response.ownership = scorer.proof_of_ownership()
+        self.log_data["info"]["scores"]["ownership"] = self.proof_response.ownership
+        self.log_data["info"]["address"] = scorer.sender_address
+        self.log_data["info"]["profile_id"] = scorer.profile_id
         if self.proof_response.ownership <= 0:
+            self.log_data["info"]["scores"]["total"] = 0.25
+            self.log_data["info"]["reason"] = "ownership"
             self.reset_scores()
             return
 
         self.proof_response.uniqueness = scorer.proof_of_uniqueness(filepath=twenty_three_file)
+        self.log_data["info"]["scores"]["uniqueness"] = self.proof_response.uniqueness
         if self.proof_response.uniqueness <= 0:
+            self.log_data["info"]["scores"]["total"] = 0.5
+            self.log_data["info"]["reason"] = "uniqueness"
             self.reset_scores()
             return
 
         self.proof_response.quality = scorer.proof_of_quality(filepath=twenty_three_file)
+        self.log_data["info"]["scores"]["quality"] = self.proof_response.quality
 
     def reset_scores(self):
         self.proof_response.authenticity = 0
@@ -356,7 +369,7 @@ class Proof:
             input_data = [f for f in i_file]
             scorer = TwentyThreeWeFileScorer(input_data=input_data, config=self.config)
 
-        score_threshold = 0.9
+        score_threshold = 0.8
 
         self.update_proof_response(scorer, twenty_three_file)
 
@@ -366,13 +379,17 @@ class Proof:
             + 0.25 * self.proof_response.authenticity
             + 0.25 * self.proof_response.uniqueness
         )
+        self.log_data["info"]["scores"]["total"] = total_score
 
         if total_score < score_threshold:
+            if self.log_data["info"].get("reason") not in ["authenticity", "ownership", "uniqueness"]:
+                self.log_data["info"]["reason"] = "quality"
             self.reset_scores()
             total_score = 0
 
         self.proof_response.score = total_score
         self.proof_response.valid = total_score >= score_threshold
+        self.log_data["success"] = self.proof_response.valid
 
         self.proof_response.attributes = {
             "total_score": total_score,
@@ -389,6 +406,18 @@ class Proof:
             if save_successful:
                 logging.info("Hash Data Saved Successfully.")
             else:
-                raise Exception("Hash Data Saving Failed.")
-
+                self.log_data["info"]["end_time"] = generate_timestamp()
+                self.log_data["success"] = False
+                msg = "Hash Data Saving Failed."
+                self.log_data["info"]["message"] = msg
+                self.log_data["info"]["error"] = True
+                self.log_data["info"]["reason"] = "Hash Save Failure"
+                self.send_logs()
+                raise Exception(msg)
+        self.send_logs()
+        self.log_data["info"]["end_time"] = generate_timestamp()
         return self.proof_response
+
+    def send_logs(self):
+        # request to send log data
+        return
