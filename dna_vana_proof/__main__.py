@@ -6,6 +6,7 @@ import traceback
 from typing import Dict, Any
 
 from dna_vana_proof.proof import Proof
+from dna_vana_proof.exception import raise_custom_exception
 
 
 INPUT_DIR, OUTPUT_DIR = "/input", "/output"
@@ -28,12 +29,32 @@ def load_config() -> Dict[str, Any]:
 
 def run() -> None:
     config = load_config()
-    input_files_exist = os.path.isdir(INPUT_DIR) and bool(os.listdir(INPUT_DIR))
 
+    missing_env_vars = [
+        env_var.upper() for env_var in ["token", "key", "verify", "endpoint"] if not config.get(env_var)
+    ]
+    if missing_env_vars:
+        message = (
+            f"Missing environment variable(s): {', '.join(missing_env_vars)}. "
+            f" Please contact administrators for further assistance."
+        )
+        raise_custom_exception(error_type="Missing Environment Variables", message=message)
+
+    input_files_exist = os.path.isdir(INPUT_DIR) and bool(os.listdir(INPUT_DIR))
     if not input_files_exist:
-        raise FileNotFoundError(f"No input files found in {INPUT_DIR}")
+        message = (
+            f"Genome file is missing or improperly uploaded."
+            f" Please try again or contact administrators for assistance."
+        )
+        raise_custom_exception(error_type="Missing Genome File", message=message)
 
     change_filename_if_zip()
+
+    valid_filetypes = ["txt"]
+    filetype = get_filetype()
+    if filetype not in valid_filetypes:
+        message = f"Genome file cannot be type '.{filetype}'. Must be one of following types: {valid_filetypes}"
+        raise_custom_exception(error_type="Invalid File Type", message=message)
 
     proof = Proof(config)
     proof_response = proof.generate()
@@ -53,9 +74,15 @@ def change_filename_if_zip():
     if filepath.lower().endswith(".zip"):
         new_file_path = os.path.splitext(filepath)[0] + ".txt"
         os.rename(filepath, new_file_path)
-        return f"Input file renamed to: {new_file_path}"
+        logging.debug(f"Input file renamed to: {new_file_path}")
     else:
-        return "Input file is not a ZIP file."
+        logging.debug("Input file is not a ZIP file.")
+
+
+def get_filetype():
+    input_file = [f for f in os.listdir(INPUT_DIR) if os.path.isfile(os.path.join(INPUT_DIR, f))][0]
+    extension = input_file.split(".")[-1].lower()
+    return extension
 
 
 if __name__ == "__main__":

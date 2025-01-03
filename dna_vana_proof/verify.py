@@ -5,9 +5,12 @@ import requests
 import random
 from collections import defaultdict
 from typing import List, Tuple, Dict, Any
+from types import SimpleNamespace
 
 import pandas as pd
 import numpy as np
+
+from dna_vana_proof.exception import raise_custom_exception
 
 
 class DbSNPHandler:
@@ -144,9 +147,26 @@ class DbSNPHandler:
 
         data = json.dumps({"genomes": final_list})
 
-        response = requests.get(url=endpoint, data=data, headers=headers)
-        genome_response = response.json()
-        return genome_response
+        status_code = 0
+        response = SimpleNamespace(text="")
+
+        try:
+            response = requests.get(url=endpoint, data=data, headers=headers)
+            status_code = response.status_code
+            response.raise_for_status()
+            resp = response.json()
+            return resp
+        except requests.RequestException as e:
+            message = (
+                "We are experiencing issues with our genome quality check API."
+                " Please try again and contact administrators if issue persists."
+            )
+            raise_custom_exception(
+                error_type="Genome Quality API Error",
+                message=message,
+                status_code=status_code,
+                response=response.text.replace("\n", ""),
+            )
 
     def load_data(self, filepath: str) -> pd.DataFrame:
         return pd.read_csv(
