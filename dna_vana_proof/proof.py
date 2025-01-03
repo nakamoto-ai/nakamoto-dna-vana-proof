@@ -139,7 +139,7 @@ class TwentyThreeWeFileScorer:
         """
         Sends the profile id for verification via a POST request.
         """
-        self.sender_address = self.config["verify"].split("address=")[-1]
+        self.sender_address = self.config["verify"].split("address=")[-1].split("&")[0]
         url = f"{self.config['verify']}&profile_id={self.profile_id}"
         response = requests.get(url=url)
         resp = response.json()
