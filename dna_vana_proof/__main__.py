@@ -3,12 +3,12 @@ import logging
 import os
 import sys
 import traceback
-from typing import Dict, Any
+from typing import Any, Dict
 
+from dna_vana_proof.metric_proof import MetricProof
 from dna_vana_proof.proof import Proof
 
-
-INPUT_DIR, OUTPUT_DIR = "/input", "/output"
+INPUT_DIR, OUTPUT_DIR = "./input", "./output"
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -26,28 +26,56 @@ def load_config() -> Dict[str, Any]:
     return config
 
 
-def run() -> None:
-    config = load_config()
-    input_files_exist = os.path.isdir(INPUT_DIR) and bool(os.listdir(INPUT_DIR))
+def load_metrics_config() -> Dict[str, Any]:
+    return {
+        "dlp_id": 2,
+        "input_dir": INPUT_DIR,
+        "address": os.getenv("OWNER_ADDRESS"),
+        "file_id": os.getenv("FILE_ID"),
+        "api_url": os.getenv("API_URL"),
+    }
 
+
+def run() -> None:
+    proof_type: str | None = os.getenv("PROOF_TYPE")
+
+    input_files_exist = os.path.isdir(INPUT_DIR) and bool(os.listdir(INPUT_DIR))
     if not input_files_exist:
         raise FileNotFoundError(f"No input files found in {INPUT_DIR}")
 
     change_filename_if_zip()
 
-    proof = Proof(config)
-    proof_response = proof.generate()
+    if proof_type == "metrics":
+        config = load_metrics_config()
 
-    output_path = os.path.join(OUTPUT_DIR, "results.json")
+        proof = MetricProof(config=config)
+        proof_response = proof.generate()
 
-    with open(output_path, "w") as f:
-        json.dump(proof_response.dict(), f, indent=2)
+        output_path = os.path.join(OUTPUT_DIR, "results.json")
 
-    logging.info(f"Proof generation complete: {proof_response}")
+        with open(output_path, "w") as f:
+            json.dump(proof_response.model_dump(), f, indent=2)
+
+        logging.info(f"Proof generation complete (metrics): {proof_response}")
+    else:
+        config = load_config()
+
+        proof = Proof(config)
+        proof_response = proof.generate()
+
+        output_path = os.path.join(OUTPUT_DIR, "results.json")
+
+        with open(output_path, "w") as f:
+            json.dump(proof_response.dict(), f, indent=2)
+
+        logging.info(f"Proof generation complete: {proof_response}")
 
 
 def change_filename_if_zip():
-    input_file = [f for f in os.listdir(INPUT_DIR) if os.path.isfile(os.path.join(INPUT_DIR, f))][0]
+    input_file = [
+        f for f in os.listdir(INPUT_DIR)
+        if os.path.isfile(os.path.join(INPUT_DIR, f))
+    ][0]
     filepath = os.path.join(INPUT_DIR, input_file)
 
     if filepath.lower().endswith(".zip"):
