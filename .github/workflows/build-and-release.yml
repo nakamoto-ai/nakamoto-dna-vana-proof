@@ -46,7 +46,7 @@ jobs:
           echo "Image SHA256: $(sha256sum dna-vana-proof-${{ github.run_number }}.tar.gz | cut -d' ' -f1)" >> release_body.txt
 
       - name: Upload image
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dna-vana-proof-image
           path: dna-vana-proof-${{ github.run_number }}.tar.gz
