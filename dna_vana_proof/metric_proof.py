@@ -23,41 +23,41 @@ def _validate_integer_gt(v: Any, t: int) -> bool:
     return isinstance(v, int) and v > t
 
 
-def _tx_filter(tx):
-    """
-    Determines if the transaction is a `requestReward` method call to the smart contract
-    `0xe1Aa905aBF3CC018832c038c636FF7041923C8d4`, within the last 24 hours. If it is, True
-    is returned, otherwise False.
-
-    If True is returned, the user potentially was rewarded by the DNA DLP within the last
-    24 hours.
-    """
-    tx_time = datetime.strptime(tx["timestamp"], "%Y-%m-%dT%H:%M:%S.%fZ")
-    tx_time = tx_time.replace(tzinfo=timezone.utc)
-    tx_method = tx["method"]
-    tx_to = tx["to"]["hash"]
-
-    now = datetime.now(timezone.utc)
-    target_to = "0xe1Aa905aBF3CC018832c038c636FF7041923C8d4"
-    target_method = "requestReward"
-
-    if now - timedelta(hours=24) > tx_time:
-        return False
-
-    if tx_method != target_method:
-        return False
-
-    if tx_to != target_to:
-        return False
-
-    return True
+# def _tx_filter(tx):
+#     """
+#     Determines if the transaction is a `requestReward` method call to the smart contract
+#     `0xe1Aa905aBF3CC018832c038c636FF7041923C8d4`, within the last 24 hours. If it is, True
+#     is returned, otherwise False.
+#
+#     If True is returned, the user potentially was rewarded by the DNA DLP within the last
+#     24 hours.
+#     """
+#     tx_time = datetime.strptime(tx["timestamp"], "%Y-%m-%dT%H:%M:%S.%fZ")
+#     tx_time = tx_time.replace(tzinfo=timezone.utc)
+#     tx_method = tx["method"]
+#     tx_to = tx["to"]["hash"]
+#
+#     now = datetime.now(timezone.utc)
+#     target_to = "0xe1Aa905aBF3CC018832c038c636FF7041923C8d4"
+#     target_method = "requestReward"
+#
+#     if now - timedelta(hours=24) > tx_time:
+#         return False
+#
+#     if tx_method != target_method:
+#         return False
+#
+#     if tx_to != target_to:
+#         return False
+#
+#     return True
+#
 
 
 class MetricProof:
 
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.address: str = config["address"]
         self.proof_response = ProofResponse(dlp_id=config["dlp_id"])
 
     def generate(self) -> ProofResponse:
@@ -72,18 +72,19 @@ class MetricProof:
         """
         logging.info("Starting proof generation")
 
-        url = f"https://api.vanascan.io/api/v2/addresses/{self.address}/transactions"
+        now = datetime.now(timezone.utc)
+        past = now - timedelta(hours=24)
+        t = past.strftime("%Y-%m-%dT%H:%M:%SZ")
+
         resp = requests.get(
-            url,
-            params={"filter": "to|from"},
-            headers={"accept": "application/json"}
+            f'{self.config["api_url"]}&filter=proof_type=metrics&filter=create_date>{t}&filter=sender_address={self.config["address"]}'
         )
         resp.raise_for_status()
-        txs = resp.json()["items"]
-        filtered_txs = [tx for tx in txs if _tx_filter(tx)]
 
-        if self._throttled(filtered_txs):
-            logging.info("Cooldown Period... Score: 0%")
+        data = resp.json()
+        logging.info(f"Found {len(data)} proofs.")
+        if len(data) > 0:
+            logging.info("Address is throttled... Score: 0%")
             self.proof_response.valid = False
             return self.proof_response
 
@@ -116,50 +117,10 @@ class MetricProof:
         requests.post(
             self.config["api_url"],
             data={
-                "file_id": self.config["file_id"], "proof_type": "metrics"
+                "sender_address": self.config["address"],
+                "file_id": self.config["file_id"],
+                "proof_type": "metrics"
             }
         )
 
         return self.proof_response
-
-    def _throttled(self, txs: List[Any]) -> bool:
-        """
-        Given a list of transactions `txs`, each `file_id` is checked against the backend to verify if 
-        the file was uploaded on behalf of a metric proof.
-
-        It is assumed the list of transactions are already filtered to the desired conditions and 
-        only contains `requestReward` method calls. If any `file_id` is found when querying the api, 
-        `True` is returned, otherwise `False`. 
-        """
-        for tx in txs:
-            if self._is_metric_upload(tx):
-                return True
-
-        return False
-
-    def _is_metric_upload(self, tx: Dict[str, Any]) -> bool:
-        """
-        Queries the api for the `file_id` in the transaction `tx`. If the `file_id` is found `True`
-        is returned, otherwise `False`.
-
-        It is assumed the transaction was already filtered and validated to contain a `file_id`.
-        """
-        file_id: str = ""
-
-        for p in tx["decoded_input"]["parameters"]:
-            if p["name"] == "fileId":
-                file_id = p["value"]
-                break
-
-        dna_proof_type_list_resp = requests.get(
-            self.config["api_url"], params={"filter": f"file_id={file_id}"}
-        )
-        dna_proof_type_list_resp.raise_for_status()
-        dna_proof_type_list = dna_proof_type_list_resp.json()
-
-        if len(dna_proof_type_list) > 0:
-            for p in dna_proof_type_list:
-                if p["proof_type"] == "metrics":
-                    return True
-
-        return False
